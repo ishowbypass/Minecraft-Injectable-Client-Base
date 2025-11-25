@@ -40,8 +40,6 @@ void JNICALL callEntryClassInOurClassLoaderAndOurJar(JNIEnv *jni, jobject ourCla
 	jclass entryClass = reinterpret_cast<jclass>(jni->CallObjectMethod(ourClassLoader, loadClass, entryClassName));
 	jmethodID entryMethod = jni->GetStaticMethodID(entryClass, "a", "()V");
 	jni->CallStaticVoidMethod(entryClass, entryMethod);
-
-	CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(FreeDLL), 0, 0, 0); // it needs async
 }
 
 void JNICALL createOurClassLoaderToLoadOurJar(JNIEnv *jni, jobject parentClassLoader)
@@ -71,46 +69,13 @@ void JNICALL createOurClassLoaderToLoadOurJar(JNIEnv *jni, jobject parentClassLo
 
 void JNICALL findGameJavaThreadToGetThreadContextClassLoader(JNIEnv *jni)
 {
-	// for (Thread thread : Thread.getAllStackTraces().keySet()) {
-	//     if (thread.getName().equals("Render thread")) {
-	//         createClassLoader(thread.getContextClassLoader());
-	//     }
-	// }
+	// createClassLoader(Thread.currentThread().getContextClassLoader());
 
 	jclass Thread = jni->FindClass("java/lang/Thread");
-	jmethodID getAllStackTraces = jni->GetStaticMethodID(Thread, "getAllStackTraces", "()Ljava/util/Map;");
-
-	jclass Map = jni->FindClass("java/util/Map");
-	jmethodID keySet = jni->GetMethodID(Map, "keySet", "()Ljava/util/Set;");
-
-	jclass Set = jni->FindClass("java/util/Set");
-	jmethodID iterator = jni->GetMethodID(Set, "iterator", "()Ljava/util/Iterator;");
-
-	jclass Iterator = jni->FindClass("java/util/Iterator");
-	jmethodID hasNext = jni->GetMethodID(Iterator, "hasNext", "()Z");
-	jmethodID next = jni->GetMethodID(Iterator, "next", "()Ljava/lang/Object;");
-
-	jmethodID getName = jni->GetMethodID(Thread, "getName", "()Ljava/lang/String;");
-
-	jclass String = jni->FindClass("java/lang/String");
-	jmethodID equals = jni->GetMethodID(String, "equals", "(Ljava/lang/Object;)Z"); // String.equals() accept an Object not String
-
+	jmethodID currentThread = jni->GetStaticMethodID(Thread, "currentThread", "()Ljava/lang/Thread;");
 	jmethodID getContextClassLoader = jni->GetMethodID(Thread, "getContextClassLoader", "()Ljava/lang/ClassLoader;");
 
-	jobject allStackTracesObj = jni->CallStaticObjectMethod(Thread, getAllStackTraces);
-	jobject keySetObj = jni->CallObjectMethod(allStackTracesObj, keySet);
-	jobject iteratorObj = jni->CallObjectMethod(keySetObj, iterator);
-
-	while (jni->CallBooleanMethod(iteratorObj, hasNext))
-	{
-		jobject thread = jni->CallObjectMethod(iteratorObj, next);
-		jobject threadName = jni->CallObjectMethod(thread, getName);
-
-		if (jni->CallBooleanMethod(threadName, equals, jni->NewStringUTF("Render thread")))
-		{
-			createOurClassLoaderToLoadOurJar(jni, jni->CallObjectMethod(thread, getContextClassLoader));
-		}
-	}
+	createOurClassLoaderToLoadOurJar(jni, jni->CallObjectMethod(jni->CallStaticObjectMethod(Thread, currentThread), getContextClassLoader));
 }
 
 void WINAPI enableBreakPoint(HANDLE thread)
@@ -157,6 +122,8 @@ LONG WINAPI vehThatToBeRegistered(PEXCEPTION_POINTERS ExceptionInfo)
 			// x64 calling convention, JNIEnv is in parameter 1, so its rcx
 			findGameJavaThreadToGetThreadContextClassLoader(reinterpret_cast<JNIEnv *>(ExceptionInfo->ContextRecord->Rcx));
 
+			CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(FreeDLL), 0, 0, 0);
+
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 	}
@@ -168,7 +135,7 @@ void WINAPI findNativeThreadAndSetBreakPointToHookJNIEnvPtr()
 {
 	if (HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, GetCurrentProcessId()))
 	{
-		THREADENTRY32 threadInfo;
+		THREADENTRY32 threadInfo = {};
 		threadInfo.dwSize = sizeof(THREADENTRY32);
 
 		if (Thread32First(snapshot, &threadInfo))
@@ -179,16 +146,16 @@ void WINAPI findNativeThreadAndSetBreakPointToHookJNIEnvPtr()
 				{
 					if (HANDLE thread = OpenThread(THREAD_QUERY_LIMITED_INFORMATION | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, 0, threadInfo.th32ThreadID))
 					{
-						if (PWSTR desc; SUCCEEDED(GetThreadDescription(thread, &desc)))
+						if (PWSTR threadDescription; SUCCEEDED(GetThreadDescription(thread, &threadDescription)))
 						{
-							if (wcscmp(desc, L"Render thread") == 0)
+							if (wcscmp(threadDescription, L"Render thread") == 0)
 							{
 								if (veh = AddVectoredExceptionHandler(true, vehThatToBeRegistered))
 								{
 									enableBreakPoint(thread);
 								}
 							}
-							LocalFree(desc);
+							LocalFree(threadDescription);
 						}
 						CloseHandle(thread);
 					}

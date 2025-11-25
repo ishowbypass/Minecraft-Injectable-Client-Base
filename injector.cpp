@@ -18,9 +18,9 @@ void main()
             {
                 if (HANDLE mcProcess = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_CREATE_THREAD, 0, mcPID))
                 {
-                    if (LPVOID allocatedPathString = VirtualAllocEx(mcProcess, 0, MAX_PATH, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE))
+                    if (LPVOID allocatedPathString = VirtualAllocEx(mcProcess, 0, sizeof(dllPath), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE))
                     {
-                        if (WriteProcessMemory(mcProcess, allocatedPathString, dllPath, MAX_PATH, 0))
+                        if (WriteProcessMemory(mcProcess, allocatedPathString, dllPath, sizeof(dllPath), 0))
                         {
                             if (HMODULE kernel32Module = GetModuleHandleW(L"kernel32.dll"))
                             {
@@ -30,14 +30,13 @@ void main()
                                     {
                                         WaitForSingleObject(remoteThread, INFINITE);
                                         CloseHandle(remoteThread);
-
-                                        VirtualFreeEx(mcProcess, allocatedPathString, 0, MEM_RELEASE);
-                                        CloseHandle(mcProcess);
                                     }
                                 }
                             }
                         }
+                        VirtualFreeEx(mcProcess, allocatedPathString, 0, MEM_RELEASE);
                     }
+                    CloseHandle(mcProcess);
                 }
             }
         }
