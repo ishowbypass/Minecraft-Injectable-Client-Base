@@ -47,7 +47,7 @@ void JNICALL createOurClassLoaderToLoadOurJar(JNIEnv *jni, jobject parentClassLo
 	// var createdClassLoader = new URLClassLoader(new URL[]{new URL("file", "", jarPath)}, parentClassLoader);
 
 	OPENFILENAMEW ofn = {sizeof(ofn)};
-	WCHAR jarPath[MAX_PATH];
+	WCHAR jarPath[MAX_PATH] = {};
 	ofn.lpstrFile = jarPath;
 	ofn.nMaxFile = MAX_PATH;
 
@@ -122,8 +122,10 @@ LONG WINAPI vehThatToBeRegistered(PEXCEPTION_POINTERS ExceptionInfo)
 			// x64 calling convention, JNIEnv is in parameter 1, so its rcx
 			findGameJavaThreadToGetThreadContextClassLoader(reinterpret_cast<JNIEnv *>(ExceptionInfo->ContextRecord->Rcx));
 
-			CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(FreeDLL), 0, 0, 0);
-
+			if (HANDLE thread = CreateThread(0, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(FreeDLL), 0, 0, 0))
+			{
+				CloseHandle(thread);
+			}
 			return EXCEPTION_CONTINUE_EXECUTION;
 		}
 	}
